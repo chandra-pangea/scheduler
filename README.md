@@ -1,6 +1,13 @@
 # Job Scheduler System
 
-A robust, scalable distributed job scheduling system built with NestJS, following SOLID principles and clean architecture patterns.
+A robust, scalable distributed job scheduling system built with NestJS, MongoDB, and Redis, following SOLID principles and clean architecture patterns.
+
+## ✨ Latest Updates
+
+- **MongoDB Integration**: Migrated from PostgreSQL to MongoDB with Mongoose
+- **API Versioning**: Implemented URI-based versioning (v1)
+- **Enhanced Performance**: Optimized queries with MongoDB indexes
+- **Improved Scalability**: Better horizontal scaling with MongoDB
 
 ## 🎯 Features
 
@@ -67,7 +74,7 @@ src/
 ### Prerequisites
 
 - Node.js (v18 or higher)
-- PostgreSQL (v14 or higher)
+- MongoDB (v7 or higher)
 - Redis (v6 or higher)
 - npm or yarn
 
@@ -91,10 +98,12 @@ cp .env.example .env
 
 Edit `.env` with your configuration:
 ```env
+# MongoDB Configuration
+MONGODB_URI=mongodb://localhost:27017/job_scheduler
+
+# Or use individual parameters
 DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=postgres
+DB_PORT=27017
 DB_DATABASE=job_scheduler
 
 REDIS_HOST=localhost
@@ -110,15 +119,18 @@ MAX_RETRY_ATTEMPTS=3
 RETRY_DELAY_MS=5000
 ```
 
-4. **Set up PostgreSQL database**
+4. **Set up MongoDB**
 ```bash
-# Create database
-createdb job_scheduler
+# macOS (using Homebrew)
+brew tap mongodb/brew
+brew install mongodb-community@7.0
+brew services start mongodb-community@7.0
 
-# Or using psql
-psql -U postgres
-CREATE DATABASE job_scheduler;
-\q
+# Or using Docker
+docker run -d -p 27017:27017 --name mongodb mongo:7-jammy
+
+# Verify MongoDB is running
+mongosh --eval "db.adminCommand('ping')"
 ```
 
 5. **Start Redis**
@@ -141,16 +153,23 @@ npm run start:prod
 ```
 
 The application will be available at:
-- API: http://localhost:3000
-- Swagger Documentation: http://localhost:3000/api
+- **API Base URL**: http://localhost:3000/api/v1
+- **Swagger Documentation**: http://localhost:3000/api/docs
+- **Health Check**: http://localhost:3000
 
 ## 📚 API Documentation
+
+### API Versioning
+
+All API endpoints are versioned and prefixed with `/api/v1`:
+
+**Base URL**: `http://localhost:3000/api/v1`
 
 ### Authentication Endpoints
 
 #### Register User
 ```http
-POST /auth/register
+POST /api/v1/auth/register
 Content-Type: application/json
 
 {
@@ -164,12 +183,12 @@ Content-Type: application/json
 ```json
 {
   "user": {
-    "id": "uuid",
+    "_id": "507f1f77bcf86cd799439011",
     "email": "user@example.com",
     "name": "John Doe",
     "isActive": true,
-    "createdAt": "2026-01-15T...",
-    "updatedAt": "2026-01-15T..."
+    "createdAt": "2026-01-23T...",
+    "updatedAt": "2026-01-23T..."
   },
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
@@ -177,7 +196,7 @@ Content-Type: application/json
 
 #### Login
 ```http
-POST /auth/login
+POST /api/v1/auth/login
 Content-Type: application/json
 
 {
@@ -195,7 +214,7 @@ Authorization: Bearer <your-jwt-token>
 
 #### Create Job
 ```http
-POST /jobs
+POST /api/v1/jobs
 Content-Type: application/json
 Authorization: Bearer <token>
 
@@ -207,7 +226,7 @@ Authorization: Bearer <token>
     "reportType": "analytics",
     "recipients": ["admin@example.com"]
   },
-  "scheduledAt": "2026-01-20T10:00:00Z",
+  "scheduledAt": "2026-01-25T10:00:00Z",
   "maxRetries": 3
 }
 ```
@@ -219,14 +238,14 @@ Authorization: Bearer <token>
   "description": "Perform daily database backup",
   "type": "recurring",
   "recurrencePattern": "daily",
-  "scheduledAt": "2026-01-16T02:00:00Z",
+  "scheduledAt": "2026-01-24T02:00:00Z",
   "maxRetries": 5
 }
 ```
 
 #### Get All Jobs
 ```http
-GET /jobs?status=pending&page=1&limit=10
+GET /api/v1/jobs?status=pending&page=1&limit=10
 Authorization: Bearer <token>
 ```
 
@@ -240,13 +259,13 @@ Authorization: Bearer <token>
 
 #### Get Job by ID
 ```http
-GET /jobs/:id
+GET /api/v1/jobs/:id
 Authorization: Bearer <token>
 ```
 
 #### Update Job
 ```http
-PUT /jobs/:id
+PUT /api/v1/jobs/:id
 Content-Type: application/json
 Authorization: Bearer <token>
 
@@ -258,13 +277,13 @@ Authorization: Bearer <token>
 
 #### Cancel Job
 ```http
-POST /jobs/:id/cancel
+POST /api/v1/jobs/:id/cancel
 Authorization: Bearer <token>
 ```
 
 #### Reschedule Job
 ```http
-POST /jobs/:id/reschedule
+POST /api/v1/jobs/:id/reschedule
 Content-Type: application/json
 Authorization: Bearer <token>
 
@@ -275,13 +294,13 @@ Authorization: Bearer <token>
 
 #### Delete Job
 ```http
-DELETE /jobs/:id
+DELETE /api/v1/jobs/:id
 Authorization: Bearer <token>
 ```
 
 #### Get Job Execution History
 ```http
-GET /jobs/:id/executions
+GET /api/v1/jobs/:id/executions
 Authorization: Bearer <token>
 ```
 
@@ -325,48 +344,73 @@ Jobs automatically retry on failure with exponential backoff:
 
 ## 📊 Database Schema
 
-### Users Table
-- `id`: UUID (Primary Key)
-- `email`: String (Unique)
-- `password`: String (Hashed)
-- `name`: String
-- `isActive`: Boolean
-- `createdAt`: Timestamp
-- `updatedAt`: Timestamp
+### MongoDB Collections
 
-### Jobs Table
-- `id`: UUID (Primary Key)
+#### Users Collection
+- `_id`: ObjectId (Primary Key)
+- `email`: String (Unique, Indexed)
+- `password`: String (Hashed with bcrypt)
 - `name`: String
-- `description`: Text
+- `isActive`: Boolean (default: true)
+- `createdAt`: Timestamp (auto-generated)
+- `updatedAt`: Timestamp (auto-generated)
+
+#### Jobs Collection
+- `_id`: ObjectId (Primary Key)
+- `name`: String (required)
+- `description`: String
 - `type`: Enum (one_time, recurring)
 - `status`: Enum (pending, running, completed, failed, cancelled)
-- `payload`: JSONB
-- `scheduledAt`: Timestamp
-- `startedAt`: Timestamp
-- `completedAt`: Timestamp
-- `recurrencePattern`: Enum (hourly, daily, weekly, monthly)
-- `retryCount`: Integer
-- `maxRetries`: Integer
-- `errorMessage`: Text
-- `result`: JSONB
-- `userId`: UUID (Foreign Key)
-- `nextRunAt`: Timestamp
-- `isActive`: Boolean
-- `createdAt`: Timestamp
-- `updatedAt`: Timestamp
+- `payload`: Object (BSON)
+- `scheduledAt`: Date
+- `startedAt`: Date (optional)
+- `completedAt`: Date (optional)
+- `recurrencePattern`: Enum (hourly, daily, weekly, monthly) - optional
+- `retryCount`: Number (default: 0)
+- `maxRetries`: Number (default: 3)
+- `errorMessage`: String (optional)
+- `result`: Object (BSON) - optional
+- `userId`: ObjectId (Foreign Key, ref: 'User')
+- `nextRunAt`: Date
+- `isActive`: Boolean (default: true)
+- `createdAt`: Timestamp (auto-generated)
+- `updatedAt`: Timestamp (auto-generated)
 
-### Job Executions Table
-- `id`: UUID (Primary Key)
-- `jobId`: UUID (Foreign Key)
+**Indexes:**
+- `{ userId: 1, status: 1 }` - Compound index for user job queries
+- `{ scheduledAt: 1 }` - Index for scheduling queries
+- `{ nextRunAt: 1 }` - Index for recurring job processing
+
+#### Job Executions Collection
+- `_id`: ObjectId (Primary Key)
+- `jobId`: ObjectId (Foreign Key, ref: 'Job')
 - `status`: Enum (success, failed)
-- `startedAt`: Timestamp
-- `completedAt`: Timestamp
-- `errorMessage`: Text
-- `result`: JSONB
-- `attemptNumber`: Integer
-- `createdAt`: Timestamp
+- `startedAt`: Date (required)
+- `completedAt`: Date
+- `errorMessage`: String
+- `result`: Object (BSON)
+- `attemptNumber`: Number (default: 0)
+- `createdAt`: Timestamp (auto-generated)
+- `updatedAt`: Timestamp (auto-generated)
+
+**Indexes:**
+- `{ jobId: 1, createdAt: -1 }` - Compound index for execution history queries
 
 ## 🎨 Design Decisions
+
+### Why MongoDB?
+- **Flexibility**: Schema-less design allows for easy evolution
+- **Performance**: Fast reads and writes with proper indexing
+- **Scalability**: Horizontal scaling with sharding support
+- **JSON-native**: Perfect for storing job payloads and results
+- **Aggregation**: Powerful aggregation pipeline for analytics
+
+### Why Mongoose?
+- **Type Safety**: Full TypeScript support with schemas
+- **Validation**: Built-in schema validation
+- **Middleware**: Pre/post hooks for business logic
+- **Population**: Easy relationship management
+- **Active Community**: Well-maintained and documented
 
 ### Why Bull Queue?
 - **Reliability**: Persistent job storage in Redis
@@ -374,22 +418,21 @@ Jobs automatically retry on failure with exponential backoff:
 - **Features**: Built-in retry logic, delayed jobs, priority queues
 - **Monitoring**: Job status tracking and metrics
 
-### Why TypeORM?
-- **Type Safety**: Full TypeScript support
-- **Migrations**: Database schema version control
-- **Relations**: Easy entity relationship management
-- **Active Record & Data Mapper**: Flexible patterns
-
 ### Why JWT Authentication?
 - **Stateless**: No server-side session storage
 - **Scalable**: Works well in distributed systems
 - **Standard**: Industry-standard authentication method
 
+### API Versioning Strategy
+- **URI Versioning**: Clear and explicit version in URL
+- **Backward Compatibility**: Maintain old versions while introducing new features
+- **Future-Proof**: Easy to add v2, v3, etc.
+
 ### Separation of Concerns
 - **Controllers**: Handle HTTP requests/responses
 - **Services**: Business logic and orchestration
 - **Repositories**: Data access layer
-- **Entities**: Domain models
+- **Schemas**: Domain models with validation
 - **DTOs**: Data validation and transformation
 
 ## 🔒 Security
@@ -397,16 +440,21 @@ Jobs automatically retry on failure with exponential backoff:
 - Passwords hashed using bcrypt (10 rounds)
 - JWT tokens for stateless authentication
 - Input validation using class-validator
-- SQL injection prevention via TypeORM parameterized queries
+- MongoDB injection prevention via Mongoose parameterized queries
 - CORS enabled for cross-origin requests
+- Environment variables for sensitive configuration
 
 ## 📈 Scalability Considerations
 
-1. **Horizontal Scaling**: Multiple application instances can share the same Redis queue
-2. **Database Connection Pooling**: TypeORM manages connection pools efficiently
+1. **Horizontal Scaling**: 
+   - Multiple application instances can share the same Redis queue
+   - MongoDB supports sharding for horizontal data distribution
+2. **Database Connection Pooling**: Mongoose manages connection pools efficiently
 3. **Queue Workers**: Separate worker processes can be deployed for job processing
 4. **Caching**: Redis can be extended for caching frequently accessed data
 5. **Load Balancing**: Application instances can be load-balanced
+6. **MongoDB Replica Sets**: High availability with automatic failover
+7. **Indexing Strategy**: Optimized indexes for common query patterns
 
 ## 🐛 Error Handling
 
@@ -419,21 +467,23 @@ Jobs automatically retry on failure with exponential backoff:
 ## 📝 Logging
 
 - **Application Logs**: NestJS built-in logger
-- **Job Execution Logs**: Stored in `job_executions` table
+- **Job Execution Logs**: Stored in `job_executions` collection
 - **Error Logs**: Detailed error messages and stack traces
 - **Audit Trail**: Complete history of job executions
+- **MongoDB Logs**: Query profiling and slow query detection
 
 ## 🚦 Health Checks
 
 Monitor system health by checking:
-- Database connectivity
-- Redis connectivity
-- Queue status
-- Application uptime
+- **MongoDB Connectivity**: `mongosh --eval "db.adminCommand('ping')"`
+- **Redis Connectivity**: `redis-cli ping`
+- **Queue Status**: Monitor Bull queue metrics
+- **Application Uptime**: Check process status
+- **Database Indexes**: Verify index usage with `db.jobs.getIndexes()`
 
 ## 🔄 Future Enhancements
 
-- [ ] Job priorities and queues
+- [ ] Job priorities and multiple queues
 - [ ] Webhook notifications for job events
 - [ ] Job dependencies and workflows
 - [ ] Real-time job monitoring dashboard
@@ -443,10 +493,21 @@ Monitor system health by checking:
 - [ ] Multi-tenancy support
 - [ ] Rate limiting
 - [ ] Metrics and analytics
+- [ ] MongoDB Atlas integration for cloud deployment
+- [ ] Database migrations with migrate-mongo
+- [ ] GraphQL API (v2)
+- [ ] WebSocket support for real-time updates
 
 ## 📄 License
 
 This project is licensed under the MIT License.
+
+## 📚 Additional Documentation
+
+- **[MongoDB Migration Guide](./MONGODB_MIGRATION.md)**: Complete guide for MongoDB setup and migration
+- **[API Testing Guide](./API_TESTING_GUIDE.md)**: Comprehensive testing instructions with examples
+- **[Architecture Documentation](./ARCHITECTURE.md)**: Detailed system architecture
+- **[Testing Guide](./TESTING.md)**: Unit and E2E testing documentation
 
 ## 👥 Contributing
 
@@ -467,11 +528,12 @@ For issues and questions:
 ## 🙏 Acknowledgments
 
 - NestJS framework and community
+- MongoDB and Mongoose teams
 - Bull queue library
-- TypeORM team
+- Redis community
 - All contributors
 
 ---
 
-Built with ❤️ using NestJS and TypeScript
-# scheduler
+Built with ❤️ using NestJS, MongoDB, and TypeScript
+
