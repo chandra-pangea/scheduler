@@ -33,10 +33,102 @@ export class JobsController {
     constructor(private readonly jobsService: JobsService) { }
 
     @Post()
-    @ApiOperation({ summary: 'Create a new job' })
-    @ApiResponse({ status: 201, description: 'Job created successfully' })
-    @ApiResponse({ status: 400, description: 'Bad request' })
-    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiOperation({
+        summary: 'Create a new job',
+        description: `Create a new scheduled job with custom payload data.
+        
+**Understanding Payload:**
+The 'payload' field is a flexible JSON object that contains all the data your job needs to execute. Think of it as the "instructions" for your job.
+
+**Common Patterns:**
+
+1. **Email Notification Job:**
+   - payload contains: recipient, subject, template, variables
+   
+2. **Data Processing Job:**
+   - payload contains: data source, filters, output location
+   
+3. **API Integration Job:**
+   - payload contains: endpoint URL, authentication, parameters
+   
+4. **Backup Job:**
+   - payload contains: database name, backup location, retention policy
+
+**Example Request Bodies:**
+
+**One-Time Email Job:**
+\`\`\`json
+{
+  "name": "Send Welcome Email",
+  "type": "one_time",
+  "scheduledAt": "2026-02-09T10:00:00Z",
+  "payload": {
+    "emailType": "welcome",
+    "recipient": "newuser@example.com",
+    "userName": "Jane Doe"
+  }
+}
+\`\`\`
+
+**Recurring Backup Job:**
+\`\`\`json
+{
+  "name": "Daily Database Backup",
+  "type": "recurring",
+  "recurrencePattern": "daily",
+  "scheduledAt": "2026-02-09T02:00:00Z",
+  "payload": {
+    "database": "production",
+    "backupPath": "/backups/daily",
+    "compression": true
+  }
+}
+\`\`\`
+
+**Report Generation Job:**
+\`\`\`json
+{
+  "name": "Monthly Sales Report",
+  "type": "recurring",
+  "recurrencePattern": "monthly",
+  "payload": {
+    "reportType": "sales",
+    "recipients": ["manager@example.com", "ceo@example.com"],
+    "format": "pdf",
+    "includeCharts": true,
+    "dateRange": "last_month"
+  }
+}
+\`\`\`
+`
+    })
+    @ApiResponse({
+        status: 201,
+        description: 'Job created successfully',
+        schema: {
+            example: {
+                _id: '65b8f1234567890abcdef123',
+                name: 'Send Welcome Email',
+                description: null,
+                type: 'one_time',
+                status: 'pending',
+                payload: {
+                    emailType: 'welcome',
+                    recipient: 'newuser@example.com',
+                    userName: 'Jane Doe'
+                },
+                scheduledAt: '2026-02-09T10:00:00.000Z',
+                userId: '65b8f1234567890abcdef000',
+                retryCount: 0,
+                maxRetries: 3,
+                isActive: true,
+                createdAt: '2026-02-08T16:30:00.000Z',
+                updatedAt: '2026-02-08T16:30:00.000Z'
+            }
+        }
+    })
+    @ApiResponse({ status: 400, description: 'Bad request - Invalid input data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - Invalid or missing JWT token' })
     async createJob(@Request() req, @Body() createJobDto: CreateJobDto) {
         return this.jobsService.createJob(req.user.userId, createJobDto);
     }

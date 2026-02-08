@@ -2,12 +2,20 @@
 
 A robust, scalable distributed job scheduling system built with NestJS, MongoDB, and Redis, following SOLID principles and clean architecture patterns.
 
+## 🚀 Quick Links
+
+- **[📖 Swagger API Docs](http://localhost:3000/api/docs)** - Interactive API documentation with payload examples (Start here!)
+- **[🎯 Quick Start Guide](./QUICK_START.md)** - Get started in 5 minutes
+- **[💡 Understanding Payloads](./PAYLOAD_EXPLANATION.md)** - Learn how to use job payloads effectively
+- **[🧪 API Testing Guide](./API_TESTING_GUIDE.md)** - Complete API examples
+
 ## ✨ Latest Updates
 
 - **MongoDB Integration**: Migrated from PostgreSQL to MongoDB with Mongoose
 - **API Versioning**: Implemented URI-based versioning (v1)
 - **Enhanced Performance**: Optimized queries with MongoDB indexes
 - **Improved Scalability**: Better horizontal scaling with MongoDB
+- **Backend API Only**: Pure REST API system for maximum flexibility
 
 ## 🎯 Features
 
@@ -155,7 +163,6 @@ npm run start:prod
 The application will be available at:
 - **API Base URL**: http://localhost:3000/api/v1
 - **Swagger Documentation**: http://localhost:3000/api/docs
-- **Health Check**: http://localhost:3000
 
 ## 📚 API Documentation
 
